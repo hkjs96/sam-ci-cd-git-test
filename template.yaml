@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  sam-app
+  mzc-osc-app
 
-  Sample SAM Template for sam-app
+  Sample SAM Template for mzc-osc-app
 
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -19,12 +19,70 @@ Resources:
       Runtime: python3.11
       Architectures:
         - x86_64
-      Events:
-        HelloWorld:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            Path: /hello
-            Method: get
+      # Events:
+      #   HelloWorld:
+      #     Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+      #     Properties:
+      #       Path: /hello
+      #       Method: get
+      #       RestApiId:
+      #         Ref: ApiGatewayApi
+  ServerlessRestApi:
+    Type: 'AWS::Serverless::Api'
+    Properties:
+      StageName: dev
+      Cors: "'*'"
+      DefinitionBody:
+        swagger: '2.0'
+        info:
+          title: 'ServerlessRestApi' # ServerlessRestApi 인데 이렇게 설정하면 'My API'로 들어가짐
+        paths:
+          /hello:
+            post: 
+              x-amazon-apigateway-integration:
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HelloWorldFunction.Arn}/invocations
+                passthroughBehavior: 'when_no_match'
+                httpMethod: POST
+                type: aws
+                requestTemplates:
+                  # application/json: '{"name": "$input.params(''name'')"}'
+                  application/json: "#set($inputRoot = $input.path(\"$\"))\n[\n#foreach($elem in $inputRoot)\n {\n  \"description\": \"Item $elem.id is a $elem.type\",\n  \"askingPrice\": \"$elem.price\"\n }#if($foreach.hasNext),#end\n\n#end\n]"
+                responses:
+                  'default':
+                    statusCode: '200'
+                    # responseTemplates:
+                    #   application/json: '$input.json("$")'
+              responses:
+                '200':
+                  description: The username of the new user and set of temporary credentials
+    
+  LambdaApiGatewayExecutionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt HelloWorldFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Join
+        - ''
+        - - 'arn:aws:execute-api:'
+          - !Ref AWS::Region
+          - ":"
+          - !Ref AWS::AccountId
+          - ":"
+          - !Ref ServerlessRestApi
+          - "/*/*"
+            
+  # ApiGatewayApi:
+  #   Type: AWS::Serverless::Api
+  #   Properties:
+  #     StageName: dev
+  #     Cors: "'*'"
+  #     GatewayResponses:
+  #       - StatusCode: '200'
+  #         ResponseTemplates:
+  #           application/json: "#set($inputRoot = $input.path(\"$\"))\n[\n#foreach($elem in $inputRoot)\n {\n  \"description\": \"Item $elem.id is a $elem.type\",\n  \"askingPrice\": \"$elem.price\"\n }#if($foreach.hasNext),#end\n\n#end\n]"
+        
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
@@ -32,7 +90,7 @@ Outputs:
   # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
   HelloWorldApi:
     Description: "API Gateway endpoint URL for Prod stage for Hello World function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/${ServerlessRestApidevStage}/hello/"
   HelloWorldFunction:
     Description: "Hello World Lambda Function ARN"
     Value: !GetAtt HelloWorldFunction.Arn
